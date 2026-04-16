@@ -11,12 +11,14 @@ st.title("🔍 Digitales Fundbüro")
 st.write("Lade ein Bild hoch und die KI erkennt den Gegenstand.")
 
 # Modell laden
+MODEL_PATH = "keras_model.h5"
+
 @st.cache_resource
 def load_model():
     model = tf.keras.models.load_model("model/keras_model.h5", compile=False)
-    return model
+    return load_model
 
-model = load_model()
+model = load_my_model()
 
 # Labels laden
 def load_labels():
