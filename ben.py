@@ -1,76 +1,125 @@
 import streamlit as st
-import numpy as np
+from ultralytics import YOLO
 from PIL import Image
-import tensorflow as tf
+import numpy as np
+import json
 import os
 
+# -----------------------------
 # Seitenkonfiguration
-st.set_page_config(page_title="Digitales Fundbüro", layout="centered")
+# -----------------------------
+st.set_page_config(
+    page_title="Fish AI Detector",
+    page_icon="🐟",
+    layout="centered"
+)
 
-st.title("🔍 Digitales Fundbüro")
-st.write("Lade ein Bild hoch und die KI erkennt den Gegenstand.")
+st.title("🐟 Fish AI Detector")
+st.write("Lade ein Bild hoch oder mache ein Foto eines Fisches.")
 
-# Basisverzeichnis (wichtig für Streamlit Cloud!)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-MODEL_PATH = os.path.join(BASE_DIR, "model", "keras_model.h5")
-LABELS_PATH = os.path.join(BASE_DIR, "model", "labels.txt")
-
-# Debug (kannst du später entfernen)
-st.write("📂 Aktuelles Verzeichnis:", BASE_DIR)
-
-if os.path.exists(MODEL_PATH):
-    st.success("✅ Modell gefunden")
-else:
-    st.error(f"❌ Modell NICHT gefunden unter: {MODEL_PATH}")
-
+# -----------------------------
 # Modell laden
+# -----------------------------
+MODEL_PATH = "model/best.pt"
+
 @st.cache_resource
 def load_model():
-    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-    return model
+    return YOLO(MODEL_PATH)
+
+# Prüfen ob Modell existiert
+if not os.path.exists(MODEL_PATH):
+    st.error("YOLO-Modell nicht gefunden! Bitte best.pt in /model ablegen.")
+    st.stop()
 
 model = load_model()
 
-# Labels laden
-def load_labels():
-    with open(LABELS_PATH, "r") as f:
-        labels = f.readlines()
-    return [label.strip() for label in labels]
+# -----------------------------
+# Fischdaten laden
+# -----------------------------
+with open("fish_info.json", "r", encoding="utf-8") as f:
+    fish_info = json.load(f)
 
-labels = load_labels()
+# -----------------------------
+# Bildquelle
+# -----------------------------
+option = st.radio(
+    "Bildquelle wählen:",
+    ["Bild hochladen", "Kamera verwenden"]
+)
 
-# Bild vorbereiten
-def preprocess_image(image):
-    image = image.convert("RGB")
-    image = image.resize((224, 224))  # Standard für Teachable Machine
-    img_array = np.array(image)
-    img_array = (img_array / 127.5) - 1
-    img_array = np.expand_dims(img_array, axis=0)
-    return img_array
+image = None
 
-# Upload
-uploaded_file = st.file_uploader("📸 Bild hochladen", type=["jpg", "jpeg", "png"])
+if option == "Bild hochladen":
+    uploaded_file = st.file_uploader(
+        "Bild auswählen",
+        type=["jpg", "jpeg", "png"]
+    )
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file)
+    if uploaded_file:
+        image = Image.open(uploaded_file)
+
+else:
+    camera_image = st.camera_input("Foto aufnehmen")
+
+    if camera_image:
+        image = Image.open(camera_image)
+
+# -----------------------------
+# KI-Erkennung
+# -----------------------------
+if image is not None:
+
     st.image(image, caption="Hochgeladenes Bild", use_column_width=True)
 
-    st.write("🔎 Analysiere Bild...")
+    if st.button("🔍 Fisch erkennen"):
 
-    processed_image = preprocess_image(image)
+        with st.spinner("KI analysiert Bild..."):
 
-    prediction = model.predict(processed_image)
-    index = np.argmax(prediction)
-    confidence = prediction[0][index]
+            img_array = np.array(image)
 
-    predicted_label = labels[index]
+            results = model.predict(
+                source=img_array,
+                conf=0.4
+            )
 
-    st.success(f"🧾 Gegenstand erkannt: **{predicted_label}**")
-    st.info(f"📊 Sicherheit: **{confidence * 100:.2f}%**")
+            result = results[0]
 
-    # Alle Wahrscheinlichkeiten anzeigen
-    st.subheader("Weitere mögliche Treffer:")
-    for i, label in enumerate(labels):
-        st.write(f"{label}: {prediction[0][i] * 100:.2f}%")
+            boxes = result.boxes
 
+            if len(boxes) == 0:
+                st.warning("Kein Fisch erkannt.")
+            else:
+
+                detected_classes = []
+
+                for box in boxes:
+                    cls_id = int(box.cls[0])
+                    class_name = model.names[cls_id]
+                    detected_classes.append(class_name)
+
+                # Duplikate entfernen
+                detected_classes = list(set(detected_classes))
+
+                st.success("Fisch erkannt!")
+
+                # Bild mit Bounding Boxes anzeigen
+                plotted = result.plot()
+                st.image(plotted, caption="Erkennung", use_column_width=True)
+
+                # Infos anzeigen
+                for fish in detected_classes:
+
+                    st.subheader(f"🐠 {fish}")
+
+                    if fish in fish_info:
+
+                        info = fish_info[fish]
+
+                        st.write(f"**Lateinischer Name:** {info['latin_name']}")
+                        st.write(f"**Schonzeit:** {info['closed_season']}")
+                        st.write(f"**Mindestmaß:** {info['min_size']}")
+                        st.write(f"**Lebensraum:** {info['habitat']}")
+                        st.write(f"**Info:** {info['fact']}")
+
+                    else:
+                        st.info("Keine zusätzlichen Informationen gefunden.")
