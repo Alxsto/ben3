@@ -1,0 +1,10 @@
+from ultralytics import YOLO
+import os
+
+MODEL_PATH = "model/best.pt"
+
+if os.path.exists(MODEL_PATH):
+    model = YOLO(MODEL_PATH)
+else:
+    print("Kein Fischmodell gefunden — Standardmodell wird geladen.")
+    model = YOLO("yolov8n.pt")
