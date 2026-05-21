@@ -20,7 +20,11 @@ st.write("Lade ein Bild hoch oder mache ein Foto eines Fisches.")
 # -----------------------------
 # Modell laden
 # -----------------------------
-MODEL_PATH = "model/best.pt"
+from ultralytics import YOLO
+
+@st.cache_resource
+def load_model():
+    return YOLO("yolov8n.pt")
 
 @st.cache_resource
 def load_model():
